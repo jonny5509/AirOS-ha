@@ -1,4 +1,4 @@
-"""HTTP polling for legacy Ubiquiti airOS 4.x devices."""
+"""HTTP/HTTPS polling for legacy Ubiquiti airOS 4.x devices."""
 import json
 import logging
 import re
@@ -106,7 +106,11 @@ def _normalise(data):
 
 class AiRXS2Coordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, host, username, password, name):
-        self.host = "http://" + host.removeprefix("https://").removeprefix("http://").strip("/").rstrip("/") + "/"
+        raw_host = host.strip().rstrip("/")
+        if raw_host.lower().startswith(("http://", "https://")):
+            self.host = raw_host + "/"
+        else:
+            self.host = "http://" + raw_host + "/"
         self.username = username
         self.password = password
         self.device_name = name
@@ -213,6 +217,6 @@ class AiRXS2Coordinator(DataUpdateCoordinator):
         except UpdateFailed:
             raise
         except (aiohttp.ClientError, TimeoutError) as err:
-            raise UpdateFailed(f"Could not connect to airOS over HTTP: {err}") from err
+            raise UpdateFailed(f"Could not connect to airOS over HTTP/HTTPS: {err}") from err
         except Exception as err:
-            raise UpdateFailed(f"Unexpected airOS HTTP error: {err}") from err
+            raise UpdateFailed(f"Unexpected airOS HTTP/HTTPS error: {err}") from err
