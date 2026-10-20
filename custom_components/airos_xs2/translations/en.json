@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Ubiquiti AirOS",
+        "description": "Choose SSH for richer telemetry and controls, or HTTP for the legacy web interface.",
+        "data": {
+          "protocol": "Connection method",
+          "name": "Device name",
+          "host": "Device IP address or URL",
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "title": "Ubiquiti AirOS"
+}
