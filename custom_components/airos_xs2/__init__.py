@@ -41,7 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 coordinator.device_name = detected_name
 
         hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
-        await hass.config_entries.async_forward_entry_setups(hass, PLATFORMS)
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         return True
     except BaseException:
         close = getattr(coordinator, "async_close", None)
