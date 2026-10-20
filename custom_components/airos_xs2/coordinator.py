@@ -1,4 +1,4 @@
-"""HTTP polling for legacy Ubiquiti airOS 4.x devices."""
+"""HTTP/HTTPS polling for legacy Ubiquiti airOS 4.x devices."""
 import json
 import logging
 import re
@@ -57,7 +57,7 @@ def _parse_status(body):
 
 
 def _normalise(data):
-    """Map common airOS status key spellings to the integration's sensor keys."""
+    """Map common airOS status key spellings to stable sensor keys."""
     aliases = {
         "signal": ("signal", "wlan_signal", "wireless_signal", "signal_strength"),
         "noise": ("noise", "noisef", "wlan_noise", "wireless_noise"),
@@ -71,6 +71,10 @@ def _normalise(data):
         "mac": ("mac", "devicemac", "device_mac", "lmac"),
         "ip_address": ("ip_address", "deviceip", "ipaddr", "lan_ip", "lip"),
         "uptime_seconds": ("uptime_seconds", "uptime", "system_uptime"),
+        "ethernet_mac": ("ethernet_mac", "ethernetmac", "ethmac", "lanmac", "lmac"),
+        "ethernet_interface_state": ("ethernet_interface_state", "eth_state", "ethstate", "lan_state"),
+        "ethernet_rx_bytes": ("ethernet_rx_bytes", "eth_rx_bytes", "lan_rx_bytes", "lan_rxbytes", "eth_rxbytes"),
+        "ethernet_tx_bytes": ("ethernet_tx_bytes", "eth_tx_bytes", "lan_tx_bytes", "lan_txbytes", "eth_txbytes"),
     }
     lookup = {re.sub(r"[^a-z0-9]", "", str(k).lower()): v for k, v in data.items()}
     result = dict(data)
@@ -90,7 +94,8 @@ def _normalise(data):
         except (KeyError, TypeError, ValueError):
             result.pop(key, None)
 
-    for key in ("signal", "noise", "wlanTxRate", "wlanRxRate", "frequency", "ccq"):
+    for key in ("signal", "noise", "wlanTxRate", "wlanRxRate", "frequency", "ccq",
+                "uptime_seconds", "ethernet_rx_bytes", "ethernet_tx_bytes"):
         number(key)
     if "ccq" in result and float(result["ccq"]) > 100:
         result["ccq"] = float(result["ccq"]) / 10
@@ -101,7 +106,11 @@ def _normalise(data):
 
 class AiRXS2Coordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, host, username, password, name):
-        self.host = "http://" + host.removeprefix("https://").removeprefix("http://").strip("/").rstrip("/") + "/"
+        raw_host = host.strip().rstrip("/")
+        if raw_host.lower().startswith(("http://", "https://")):
+            self.host = raw_host + "/"
+        else:
+            self.host = "http://" + raw_host + "/"
         self.username = username
         self.password = password
         self.device_name = name
@@ -134,18 +143,10 @@ class AiRXS2Coordinator(DataUpdateCoordinator):
         return kwargs.pop("method", "GET")
 
     async def _login(self):
-        """Log in using the exact minimal multipart shape expected by old airOS CGI."""
+        """Log in using the minimal multipart shape expected by old airOS CGI."""
         await self._request("login.cgi")
-
-        # libcurl's -F fields used by the working device test have no per-part
-        # Content-Type headers. Build that same simple multipart form explicitly:
-        # some old airOS CGI builds fail to parse aiohttp's extra part headers.
         boundary = "------------------------" + secrets.token_hex(12)
-        fields = (
-            ("uri", ""),
-            ("username", self.username),
-            ("password", self.password),
-        )
+        fields = (("uri", ""), ("username", self.username), ("password", self.password))
         chunks = []
         for name, value in fields:
             chunks.append(
@@ -156,48 +157,37 @@ class AiRXS2Coordinator(DataUpdateCoordinator):
             )
         chunks.append(f"--{boundary}--\r\n")
         payload = "".join(chunks).encode("utf-8")
-
         async with self.session.post(
-            urljoin(self.host, "login.cgi"),
-            data=payload,
+            urljoin(self.host, "login.cgi"), data=payload,
             headers={
                 "Content-Type": f"multipart/form-data; boundary={boundary}",
                 "Content-Length": str(len(payload)),
                 "Referer": urljoin(self.host, "login.cgi"),
-            },
-            allow_redirects=False,
+            }, allow_redirects=False,
         ) as response:
             body = await response.text()
             status = response.status
             location = response.headers.get("Location", "")
-
         if status in (301, 302, 303, 307, 308) and "index.cgi" in location.lower():
             return
-
         lowered = body.lower()
         if "invalid credentials" in lowered or "login failed" in lowered or 'id="loginform"' in lowered:
             raise UpdateFailed(
                 f"airOS login.cgi returned the login page (HTTP {status}, "
-                f"Location: {location or 'none'}). Login was not accepted; "
-                "verify the integration files were updated and restart Home Assistant. "
-                "Passwords and session cookies are never logged."
+                f"Location: {location or 'none'}). Login was not accepted; verify credentials and integration files."
             )
         if status >= 400:
             raise UpdateFailed(f"airOS HTTP {status} from login.cgi")
         raise UpdateFailed(
-            f"Unexpected airOS login response (HTTP {status}, "
-            f"Location: {location or 'none'})."
+            f"Unexpected airOS login response (HTTP {status}, Location: {location or 'none'})."
         )
 
     async def async_reboot(self):
-        """Request a normal reboot over HTTP; never call the factory-reset endpoint."""
+        """Request a normal reboot; never call the factory-reset endpoint."""
         await self._login()
         try:
-            # The System page's Reboot... control opens reboot.cgi with GET.
-            # reset.cgi is deliberately never requested by this integration.
             await self._request("reboot.cgi")
         except (aiohttp.ClientError, TimeoutError) as err:
-            # Some firmware closes the connection as the device restarts.
             _LOGGER.debug("Connection ended while requesting airOS reboot: %s", err)
 
     async def _async_update_data(self):
@@ -208,31 +198,25 @@ class AiRXS2Coordinator(DataUpdateCoordinator):
             flattened = {}
             _flatten(parsed, flattened)
             result = _normalise(flattened)
-
-            # airOS 4 exposes the configured hostname on system.cgi, not status.cgi.
             try:
                 system_page = await self._request("system.cgi")
                 hostname_input = re.search(
                     r"""<input\b(?=[^>]*\b(?:name|id)\s*=\s*["']hostname["'])[^>]*>""",
-                    system_page,
-                    re.IGNORECASE,
+                    system_page, re.IGNORECASE,
                 )
                 if hostname_input:
                     hostname_value = re.search(
                         r"""\bvalue\s*=\s*["']([^"']*)["']""",
-                        hostname_input.group(0),
-                        re.IGNORECASE,
+                        hostname_input.group(0), re.IGNORECASE,
                     )
                     if hostname_value and hostname_value.group(1).strip():
                         result["hostname"] = hostname_value.group(1).strip()
             except (aiohttp.ClientError, TimeoutError, UpdateFailed):
-                # Status sensors remain available if the optional settings page fails.
                 pass
-
             return result
         except UpdateFailed:
             raise
         except (aiohttp.ClientError, TimeoutError) as err:
-            raise UpdateFailed(f"Could not connect to airOS over HTTP: {err}") from err
+            raise UpdateFailed(f"Could not connect to airOS over HTTP/HTTPS: {err}") from err
         except Exception as err:
-            raise UpdateFailed(f"Unexpected airOS HTTP error: {err}") from err
+            raise UpdateFailed(f"Unexpected airOS HTTP/HTTPS error: {err}") from err
