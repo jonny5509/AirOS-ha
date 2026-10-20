@@ -6,7 +6,9 @@ from .const import DOMAIN
 from .coordinator import AiRXS2Coordinator as HttpCoordinator
 from .coordinator_ssh import AiRXS2Coordinator as SshCoordinator
 
-PLATFORMS = ["sensor", "button", "switch"]
+# This integration intentionally exposes sensors only. Do not load button or
+# switch platforms for either connection method.
+PLATFORMS = ["sensor"]
 
 _AUTO_NAMES = {
     "airos", "air os", "ubiquiti airos", "ubiquiti airos (http)",
@@ -15,7 +17,10 @@ _AUTO_NAMES = {
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    protocol = entry.data.get("protocol") or ("http" if entry.data.get("host", "").lower().startswith(("http://", "https://")) else "ssh")
+    protocol = entry.data.get("protocol") or (
+        "http" if entry.data.get("host", "").lower().startswith(("http://", "https://"))
+        else "ssh"
+    )
     protocol = protocol.lower()
     coordinator_class = SshCoordinator if protocol == "ssh" else HttpCoordinator
     coordinator = coordinator_class(
@@ -36,7 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 coordinator.device_name = detected_name
 
         hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        await hass.config_entries.async_forward_entry_setups(hass, PLATFORMS)
         return True
     except BaseException:
         close = getattr(coordinator, "async_close", None)
