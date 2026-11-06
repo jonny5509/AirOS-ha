@@ -11,10 +11,22 @@
           "username": "Username",
           "password": "Password"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure AirOS device",
+        "description": "Update the connection method, device name, address, or credentials.",
+        "data": {
+          "protocol": "Connection method",
+          "name": "Device name",
+          "host": "Device IP address or URL",
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "abort": {
-      "already_configured": "This device is already configured."
+      "already_configured": "This device is already configured.",
+      "reconfigure_successful": "The AirOS device was reconfigured successfully."
     }
   },
   "title": "Ubiquiti AirOS"
