@@ -1,4 +1,5 @@
-"""HTTP-only maintenance controls for legacy airOS devices."""
+"""Maintenance controls for legacy airOS devices over SSH or HTTP."""
+import asyncssh
 from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -7,8 +8,6 @@ from .const import DOMAIN
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    if entry.data.get("protocol", "http").lower() != "http":
-        return
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([AirOSRebootButton(coordinator, entry)])
 
@@ -33,4 +32,18 @@ class AirOSRebootButton(CoordinatorEntity, ButtonEntity):
         self._coordinator = coordinator
 
     async def async_press(self):
-        await self._coordinator.async_reboot()
+        """Reboot through the configured transport."""
+        if hasattr(self._coordinator, "async_reboot"):
+            await self._coordinator.async_reboot()
+            return
+
+        async with asyncssh.connect(
+            self._coordinator.host,
+            username=self._coordinator.username,
+            password=self._coordinator.password,
+            known_hosts=None,
+            kex_algs=["diffie-hellman-group1-sha1"],
+            encryption_algs=["aes128-cbc"],
+            server_host_key_algs=["ssh-rsa"],
+        ) as conn:
+            await conn.run("reboot")
