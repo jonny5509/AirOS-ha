@@ -6,9 +6,7 @@ from .const import DOMAIN
 from .coordinator import AiRXS2Coordinator as HttpCoordinator
 from .coordinator_ssh import AiRXS2Coordinator as SshCoordinator
 
-# This integration intentionally exposes sensors only. Do not load button or
-# switch platforms for either connection method.
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "button"]
 
 _AUTO_NAMES = {
     "airos", "air os", "ubiquiti airos", "ubiquiti airos (http)",
