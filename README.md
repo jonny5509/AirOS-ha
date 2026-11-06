@@ -42,7 +42,11 @@ The integration domain remains `airos_xs2`. Existing entries should retain their
 
 ## Compatibility
 
-Designed for legacy Ubiquiti airOS 4.x devices. Availability of sensors and commands depends on firmware and hardware.
+Officially supported hardware is limited to the original Ubiquiti NanoStation 2 (NS2/XS2) and NanoStation 5 (NS5/XS5), running legacy airOS 3.x–4.x.
+
+NanoStation Loco, Bullet, PicoStation, PowerStation, and other product families are **not officially supported**. Device identification or parsing of similar status fields does not establish compatibility.
+
+Available sensors depend on the radio model, firmware, connection method, and fields or commands exposed by the device. The compatibility statement is a supported-scope baseline, not a claim that every firmware build has been verified on physical hardware.
 
 ## License
 
